@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FOOTIQ | Football Data Center</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#080d17;color:#eaf0fa;font-family:Arial,sans-serif}
+header{padding:22px 18px;background:linear-gradient(120deg,#101e33,#0b111e);border-bottom:1px solid #26354a}
+.brand{font-size:25px;font-weight:900;letter-spacing:2px}
+.brand span{color:#39e6a0}
+.sub{font-size:12px;color:#8998ad;margin-top:6px}
+main{max-width:950px;margin:auto;padding:16px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+button{background:#142237;border:1px solid #2a405b;color:#dce8f7;padding:11px 15px;border-radius:10px;cursor:pointer}
+button.active{background:#20c982;color:#06150e;border-color:#20c982;font-weight:bold}
+#status{color:#91a3bb;font-size:13px;margin:12px 0}
+.card{background:#101927;border:1px solid #243248;border-radius:15px;padding:16px;margin-bottom:12px;cursor:pointer;transition:.2s}
+.card:hover{border-color:#2de19a;transform:translateY(-1px)}
+.meta{text-align:center;font-size:11px;color:#8da0b9;margin-bottom:15px}
+.teams{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.team{width:40%;display:flex;align-items:center;gap:9px;font-weight:bold;font-size:14px}
+.team:last-child{justify-content:flex-end;text-align:right}
+.logo{width:38px;height:38px;object-fit:contain}
+.score{font-size:20px;font-weight:bold}
+.foot{font-size:11px;color:#91a0b4;margin-top:13px;text-align:center}
+.modal{position:fixed;inset:0;background:#000c;display:none;overflow-y:auto;padding:15px;z-index:9}
+.modalbox{max-width:750px;margin:25px auto;background:#0d1725;border:1px solid #2b4059;border-radius:18px;padding:18px}
+.close{float:right;font-size:20px}
+.tabs{display:flex;gap:6px;overflow-x:auto;margin:18px 0}
+.tabs button{white-space:nowrap;font-size:12px}
+.section{background:#121e2d;padding:14px;border-radius:12px;margin:10px 0}
+.section h3{margin:0 0 12px;font-size:15px}
+.result{display:flex;justify-content:space-between;gap:8px;padding:10px 0;border-bottom:1px solid #243247;font-size:13px}
+.muted{color:#8c9db3;font-size:12px}
+.center{text-align:center}
+.empty{padding:20px;text-align:center;color:#8c9db3}
+</style>
+</head>
+<body>
+
+<header>
+ <div class="brand">FOOT<span>IQ</span></div>
+ <div class="sub">FOOTBALL DATA CENTER · LIVE DATA</div>
+</header>
+
+<main>
+ <div class="toolbar">
+  <button class="active" onclick="filterMatches('ALL',this)">Semua</button>
+  <button onclick="filterMatches('LIVE',this)">Live</button>
+  <button onclick="filterMatches('UPCOMING',this)">Upcoming</button>
+  <button onclick="filterMatches('FINISHED',this)">Finished</button>
+  <button onclick="loadMatches()">↻ Refresh</button>
+ </div>
+
+ <div id="status">Memuat pertandingan...</div>
+ <div id="matches"></div>
+</main>
+
+<div class="modal" id="modal">
+ <div class="modalbox">
+  <button class="close" onclick="closeModal()">✕</button>
+  <div id="detailHead"></div>
+  <div class="tabs">
+   <button class="active" onclick="showTab('overview',this)">Overview</button>
+   <button onclick="showTab('h2h',this)">H2H</button>
+   <button onclick="showTab('home',this)">Home Last 5</button>
+   <button onclick="showTab('away',this)">Away Last 5</button>
+  </div>
+  <div id="detailContent"></div>
+ </div>
+</div>
+
+<script>
+let allMatches=[];
+let currentFilter='ALL';
+let currentAnalysis=null;
+
+const $=id=>document.getElementById(id);
+
+function esc(s){
+ return String(s??'').replace(/[&<>"']/g,c=>({
+ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+ }[c]));
+}
+
+function dateText(d){
+ if(!d)return '-';
+ return new Date(d).toLocaleString('id-ID',{
+  dateStyle:'medium',timeStyle:'short'
+ });
+}
+
+function statusText(m){
+ const s=m.status;
+ if(s==='IN_PLAY'||s==='PAUSED'||s==='LIVE')return 'LIVE';
+ if(s==='FINISHED')return 'FINISHED';
+ return 'UPCOMING';
+}
+
+function scoreText(m){
+ let h=m.score?.fullTime?.home;
+ let a=m.score?.fullTime?.away;
+ if(h==null||a==null)return 'VS';
+ return h+' - '+a;
+}
+
+function logo(src){
+ return src?`<img class="logo" src="${esc(src)}" onerror="this.style.display='none'">`:'';
+}
+
+function renderMatches(){
+ let list=allMatches.filter(m=>{
+  if(currentFilter==='ALL')return true;
+  return statusText(m)===currentFilter;
+ });
+
+ $('matches').innerHTML=list.map(m=>`
+  <div class="card" onclick="openMatch(${m.id})">
+   <div class="meta">
+    ${esc(m.competition?.name||'Kompetisi')}
+    · ${esc(statusText(m))}
+   </div>
+   <div class="teams">
+    <div class="team">
+     ${logo(m.homeTeam?.crest)}
+     <span>${esc(m.homeTeam?.shortName||m.homeTeam?.name)}</span>
+    </div>
+    <div class="score">${esc(scoreText(m))}</div>
+    <div class="team">
+     <span>${esc(m.awayTeam?.shortName||m.awayTeam?.name)}</span>
+     ${logo(m.awayTeam?.crest)}
+    </div>
+   </div>
+   <div class="foot">${esc(dateText(m.utcDate))}</div>
+  </div>
+ `).join('')||'<div class="empty">Tidak ada pertandingan.</div>';
+}
+
+function filterMatches(f,b){
+ currentFilter=f;
+ document.querySelectorAll('.toolbar button').forEach(x=>x.classList.remove('active'));
+ if(b)b.classList.add('active');
+ renderMatches();
+}
+
+async function loadMatches(){
+ $('status').textContent='Mengambil data pertandingan...';
+ try{
+  const r=await fetch('/api/matches');
+  const data=await r.json();
+  if(!r.ok)throw new Error(data.error||'Gagal memuat');
+  allMatches=data.matches||[];
+  $('status').textContent=allMatches.length+' pertandingan tersedia';
+  renderMatches();
+ }catch(e){
+  $('status').textContent='Error: '+e.message;
+ }
+}
+
+function closeModal(){
+ $('modal').style.display='none';
+}
+
+async function openMatch(id){
+ $('modal').style.display='block';
+ $('detailHead').innerHTML='<div class="empty">Memuat analisis...</div>';
+ $('detailContent').innerHTML='';
+ try{
+  const r=await fetch('/api/analysis/'+id);
+  const data=await r.json();
+  if(!r.ok)throw new Error(data.error||'Gagal');
+  currentAnalysis=data;
+  renderHead(data.match);
+  showTab('overview',document.querySelector('.tabs button'));
+ }catch(e){
+  $('detailHead').innerHTML='';
+  $('detailContent').innerHTML='<div class="empty">Error: '+esc(e.message)+'</div>';
+ }
+}
+
+function renderHead(m){
+ $('detailHead').innerHTML=`
+ <div class="meta">${esc(m.competition?.name||'Match')}</div>
+ <div class="teams">
+  <div class="team">
+   ${logo(m.homeTeam?.crest)}
+   <span>${esc(m.homeTeam?.name)}</span>
+  </div>
+  <div class="score">${esc(scoreText(m))}</div>
+  <div class="team">
+   <span>${esc(m.awayTeam?.name)}</span>
+   ${logo(m.awayTeam?.crest)}
+  </div>
+ </div>
+ <div class="foot">${esc(dateText(m.utcDate))} · ${esc(m.status)}</div>
+ `;
+}
+
+function showTab(tab,b){
+ document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('active'));
+ if(b)b.classList.add('active');
+ if(!currentAnalysis)return;
+
+ const d=currentAnalysis;
+ const m=d.match;
+
+ if(tab==='overview'){
+  $('detailContent').innerHTML=`
+   <div class="section">
+    <h3>Match Information</h3>
+    <div class="result"><span>Kompetisi</span><span>${esc(m.competition?.name)}</span></div>
+    <div class="result"><span>Status</span><span>${esc(m.status)}</span></div>
+    <div class="result"><span>Matchday</span><span>${esc(m.matchday??'-')}</span></div>
+    <div class="result"><span>Kickoff</span><span>${esc(dateText(m.utcDate))}</span></div>
+    <div class="result"><span>Venue</span><span>${esc(m.venue||'Tidak tersedia')}</span></div>
+   </div>
+   <div class="section">
+    <h3>Data Coverage</h3>
+    <div class="result"><span>${esc(m.homeTeam?.name)} · Last 5</span><span>${d.home_last5?.length||0} data</span></div>
+    <div class="result"><span>${esc(m.awayTeam?.name)} · Last 5</span><span>${d.away_last5?.length||0} data</span></div>
+    <div class="result"><span>H2H</span><span>${d.h2h?.length||0} data</span></div>
+   </div>
+   <div class="muted center">Informasi berdasarkan data API yang tersedia.</div>
+  `;
+ }
+ else if(tab==='h2h'){
+  $('detailContent').innerHTML=renderHistory(d.h2h,m);
+ }
+ else if(tab==='home'){
+  $('detailContent').innerHTML=renderHistory(d.home_last5,m.homeTeam);
+ }
+ else if(tab==='away'){
+  $('detailContent').innerHTML=renderHistory(d.away_last5,m.awayTeam);
+ }
+}
+
+function renderHistory(arr,team){
+ if(!arr||!arr.length){
+  return '<div class="empty">Belum ada data yang dikirim API.</div>';
+ }
+
+ return `<div class="section">
+ <h3>${esc(team?.name||'Match History')}</h3>
+ ${arr.map(m=>{
+  const h=m.homeTeam?.shortName||m.homeTeam?.name||'Home';
+  const a=m.awayTeam?.shortName||m.awayTeam?.name||'Away';
+  const hs=m.score?.fullTime?.home;
+  const as=m.score?.fullTime?.away;
+  return `
+   <div class="result">
+    <div>
+     <div>${esc(h)} vs ${esc(a)}</div>
+     <div class="muted">${esc(m.competition?.name||'')} · ${esc(dateText(m.utcDate))}</div>
+    </div>
+    <strong>${hs??'-'} : ${as??'-'}</strong>
+   </div>
+  `;
+ }).join('')}
+ </div>`;
+}
+
+loadMatches();
+</script>
+</body>
+</html>
